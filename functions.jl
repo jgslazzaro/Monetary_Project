@@ -60,16 +60,14 @@ function simMC(S,pdf,T,s0)
     return ssim
 end
 
-#Cash in Hands function
-x(k::Float64,b::Float64,z;w::Float64=w,δ::Float64=δ,α::Float64 = α) = (z[1]*(1-α)/w)^(1/α)*k*(z[1]*(z[1]*(1-α)/w)^(1-α)-w)-b+(1-δ)*k
-#Defining consumption function:
-c(x::Float64,k1::Float64,b1::Float64) = x-k1+q(k1,b1)*b1
 
 function VFI(X::StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrecision{Float64}},
-    O::Float64,w::Float64,σ::Float64;α::Float64 = α,β::Float64 = β,
+    O::Float64,w::Float64,σ::Float64,xbar::Float64;α::Float64 = α,β::Float64 = β,
     δ::Float64=δ, μ::Float64 =μ,integranodes::Int64=50,inner_optimizer = BFGS(), tol::Float64 = 1e-6)
 
     nX = length(X)
+    #Defining consumption function:
+    c(x::Float64,k1::Float64,b1::Float64,xbar::Float64=xbar) = x-k1+q(k1,b1,xbar)*b1
 
     #nodes, weights = gausshermite(integranodes)#Gauss Legendre nodes and weights,this function is just a Quadrature table
     #Expected value function given states and a value function V
@@ -97,7 +95,7 @@ function VFI(X::StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrec
 
 
     #Function to be maximized by the solver
-    function Vf(S::Array{Float64,1},X::Float64,σ::Float64;β::Float64 = β)
+    function Vf(S::Array{Float64,1},X::Float64,σ::Float64;β::Float64 = β,xbar::Float64=xbar)
         k1,b1 = S
         value = u(c(X,k1,b1)) + β * EV(k1,b1,σ)
         return -value
@@ -106,7 +104,7 @@ function VFI(X::StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrec
     #solver stuff
     initial = [.5,.5]
     lower = [0.001,-Inf]
-    upper = [Inf,90.0]
+    upper = [Inf,Inf]
     #predefining variables and loop stuff
     policy = ones(nX,3) #last dimension indicates if it is the policy for k,b,default
     distance = 1
@@ -156,20 +154,46 @@ function VFI(X::StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrec
     return  policy_k,policy_b,policy_c,policy_def,V,Vgrid,policy
 end
 
-function monetary(X::StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrecision{Float64}},
-    O::Float64,w::Float64,σ::Float64;α::Float64 = α,β::Float64 = β, δ::Float64=δ, μ::Float64 =μ,r::Float64=r, tol::Float64 = 1e-6)
-xbar = X[1]
-DefProb(k1::Float64,b1::Float64,xbar::Float64;σ = σ) = cdf(LogNormal(0.0,σ),optimize( z-> abs(xbar - x(k1,b1,z)),eps(),30.0).minimizer)
+#Cash in Hands function
+x(k::Float64,b::Float64,z;w::Float64=w,δ::Float64=δ,α::Float64 = α) = (z[1]*(1-α)/w)^(1/α)*k*(z[1]*(z[1]*(1-α)/w)^(1-α)-w)-b+(1-δ)*k
+#Defining the Default probability function
+DefProb(k1,b1,xbar,σ) = cdf(LogNormal(0.0,σ),
+    optimize( z-> abs(xbar - x(k1,b1,z)),eps(),30.0).minimizer)
 #finds the probability of z such that X tommorrow is below the threshold
-q(k1::Float64,b1::Float64;r::Float64=r,σ::Float64 = σ,xbar::Float64 = xbar) = (1-DefProb(k1,b1,xbar)) / (1+r)
+q(k1::Float64,b1::Float64,xbar::Float64;r::Float64=r,σ::Float64 = σ) = (1-DefProb(k1,b1,xbar,σ)) / (1+r)
+
+function monetary(X::StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrecision{Float64}},
+    O::Float64, w::Float64, σ::Float64; α::Float64 = α,β::Float64 = β, δ::Float64=δ,
+    μ::Float64 =μ, r::Float64=r, tol::Float64 = 1e-6)
+
+
+    nX=length(X)
+    xbar = X[1]
+    qgrid = 1/(1+r)*ones(nX)
+    policy_k,policy_b,policy_c,policy_def,V,Vgrid,policygrid= VFI(X,O,w,σ,xbar;α = α,
+    β = β, δ=δ, μ =μ,inner_optimizer = BFGS(), tol = 1e-6)
+    xbar = X[findxbar(policygrid[:,3])] #find the threshold
+    distance = maximum(abs.(q.(policy_k.(X),policy_b.(X),xbar) - qgrid))
+    println("Distance is $(distance)")
     while distance >tol
-        @time policy_k,policy_b,policy_c,policy_def,V,Vgrid,policygrid= VFI(X,O,w,σ;α = α,
+        @time policy_k,policy_b,policy_c,policy_def,V,Vgrid,policygrid= VFI(X,O,w,σ,xbar;α = α,
         β = β, δ=δ, μ =μ,inner_optimizer = BFGS(), tol = 1e-6)
-        qgrid = q.(policy_k.(X),policy_b.(X))
-        xbar = X[findlast(policygrid[:,3].==1)] #find the threshold
-        distance = maximum(abs.(q1.(policy_k.(X),policy_b.(X)) - qgrid))
+        qgrid = q.(policy_k.(X),policy_b.(X),xbar)
+        xbar = X[findxbar(policygrid[:,3])] #find the threshold
+        distance = maximum(abs.(q.(policy_k.(X),policy_b.(X),xbar) - qgrid))
         println("Distance is $(distance)")
-        q(k1::Float64,b1::Float64;r::Float64=r,σ::Float64 = σ) = q1(k1,b1;r=r,σ = σ)
     end
-return policy_k,policy_b,policy_c,policy_def,V,Vgrid,policygrid,xbar,q
+    return policy_k,policy_b,policy_c,policy_def,V,Vgrid,policygrid,xbar,q
+
+end
+
+function findxbar(policygrid)
+    xbar = length(policygrid)
+    for i=1:length(policygrid)
+        if policygrid[i] == 0.0
+            xbar = i
+            break
+        end
+    end
+    return xbar
 end

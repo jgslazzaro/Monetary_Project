@@ -4,31 +4,34 @@ include("functions.jl")
 
 #Defining parameters
 α = 0.36
-β = 0.9
-δ = .025
-σ = .2
+β = 0.92
+δ = .1
+σ = .5
 μ = 1.0
-r = 0.02
-w =  1.0
-O = 3.0#-Inf #Outside option
+r = 0.1
+w =  .450
+O = .01#-Inf #Outside option
 
+1/(1+r)
 #Cash in hand grid:
-nX = 1500 #number of Cash in Hand gridpoints
-X = range(-0.0,stop = 30, length = nX)
-
+nX = 300 #number of Cash in Hand gridpoints
+X = range(-10.0,stop = 50, length = nX)
 
 policy_k,policy_b,policy_c,policy_def,V,Vgrid,policygrid,xbar,q = monetary(X,O,w,σ)
 
-
-
-
 using Plots
-plot(X,policy_k.(X)) #log utility, exogenous labor case
-plot(X,policy_b.(X))
-plot(X,policy_c.(X))
-plot(X,x.(policy_k.(X),policy_b.(X),1.0))
-plot(X,V.(X))
+plot(X,policy_k.(X),label = "Capital policy") #log utility, exogenous labor case
+plot(X,policy_b.(X),label = "Debt policy")
+plot(X,policy_c.(X),label = "Consumption policy")
+
+plot(X,V.(X),label = "Value Function")
+plot(X,q.(policy_k.(X),policy_b.(X),xbar))
+plot(X,[x.(policy_k.(X),policy_b.(X),6.) x.(policy_k.(X),policy_b.(X),.5)],label=["X, z=1" "X, z=0.5"])
 #plot(A[1]:0.05:A[end],[policy_a.(A[1]:0.05:A[end],1) policy_a.(A[1]:0.05:A[end],0) A[1]:0.05:A[end]],label =["Employed", "Unemployed","45"],legend = :bottomright)
 
+
+pdef = 1 .-q.(policy_k.(X),policy_b.(X),xbar)*(1+r)
+
+
+
 #plot(A,[policy_a.(A) Z*α*β.*(A).^α A])
-|
