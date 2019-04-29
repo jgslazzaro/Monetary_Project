@@ -19,6 +19,12 @@ X = range(-10.0,stop = 50, length = nX)
 
 policy_k,policy_b,policy_c,policy_def,V,Vgrid,policygrid,xbar,q = monetary(X,O,w,σ)
 
+
+nstar(k,z;α=α,w=w) = (z*(1-α)/w)^(1/α)*k
+X2(k::Float64,b::Float64,z;w::Float64=w,δ::Float64=δ,α::Float64 = α) = z*k^α * nstar(k,z)^(1-α)-w*nstar(k,z) + (1-δ)*k - b
+
+
+
 using Plots
 plot(X,policy_k.(X),label = "Capital policy") #log utility, exogenous labor case
 plot(X,policy_b.(X),label = "Debt policy")

@@ -155,7 +155,7 @@ function VFI(X::StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrec
 end
 
 #Cash in Hands function
-x(k::Float64,b::Float64,z;w::Float64=w,δ::Float64=δ,α::Float64 = α) = (z[1]*(1-α)/w)^(1/α)*k*(z[1]*(z[1]*(1-α)/w)^(1-α)-w)-b+(1-δ)*k
+x(k::Float64,b::Float64,z;w::Float64=w,δ::Float64=δ,α::Float64 = α) = (α*z[1]^(1/α)*((1-α)/w)^((1-α)/α)+(1-δ))*k-b
 #Defining the Default probability function
 DefProb(k1,b1,xbar,σ) = cdf(LogNormal(0.0,σ),
     optimize( z-> abs(xbar - x(k1,b1,z)),eps(),30.0).minimizer)
@@ -176,9 +176,9 @@ function monetary(X::StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.Twic
     distance = maximum(abs.(q.(policy_k.(X),policy_b.(X),xbar) - qgrid))
     println("Distance is $(distance)")
     while distance >tol
+        qgrid = q.(policy_k.(X),policy_b.(X),xbar)
         @time policy_k,policy_b,policy_c,policy_def,V,Vgrid,policygrid= VFI(X,O,w,σ,xbar;α = α,
         β = β, δ=δ, μ =μ,inner_optimizer = BFGS(), tol = 1e-6)
-        qgrid = q.(policy_k.(X),policy_b.(X),xbar)
         xbar = X[findxbar(policygrid[:,3])] #find the threshold
         distance = maximum(abs.(q.(policy_k.(X),policy_b.(X),xbar) - qgrid))
         println("Distance is $(distance)")
